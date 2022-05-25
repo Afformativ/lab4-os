@@ -1,87 +1,112 @@
-﻿#include <iostream>
-#include <cstdio>
+#include <iostream>
 #include <thread>
-#include <future>
-#include <cassert>
+#include <vector>
+#include <chrono>
+#include <random>
 
 using namespace std;
+using namespace chrono;
 
-mutex cout_lock;
+std::random_device rd;
+std::mt19937 rng(rd());
+std::uniform_int_distribution<int> uni(-100, 100); // guaranteed unbiased
 
-void print(const vector<vector<int>>& m)
-{
-	for (int i = 0; i < m.size(); ++i)
-	{
-		for (int j = 0; j < m[i].size(); ++j)
-		{
-			cout << m[i][j] << " ";
-		}
-		cout << endl;
-	}
+vector<vector<int>> matrixA;
+vector<vector<int>> matrixB;
+vector<vector<int>> matrixC;
+
+vector<vector<int>> createMatrix(int rows, int cols) {
+    vector<vector<int>> m;
+    for (int i = 0; i < rows; ++i) {
+        m.emplace_back();
+        for (int j = 0; j < cols; j++) {
+            m[i].push_back(0);
+        }
+    }
+    return m;
 }
 
-void multiply(int i, int j, const vector<vector<int>>& a, const vector<vector<int>>& b, vector<vector<int>>& c)
-{
-	int n;
-	assert((n = a[i].size()) == b.size());
-
-	int result = 0;
-	for (int k = 0; k < n; ++k)
-	{
-		result += a[i][k] * b[k][j];
-	}
-
-	lock_guard<mutex> lock(cout_lock);
-	cout << i + 1 << " x " << j + 1 << " = " << result << endl;
-	c[i][j] = result;
+int randomNumber() {
+    return uni(rng);
 }
 
-int main()
-{
-	srand(time(0));
+void inputMatrix(vector<vector<int>> &m, int r, int c) {
+    for (int i = 0; i < r; i++) {
+        for (int j = 0; j < c; j++) {
+            cin >> m[i][j];
+        }
+    }
+}
 
-	constexpr int MOD = 100;
+void generateMatrix(vector<vector<int>> &m, int r, int c) {
+    for (int i = 0; i < r; i++) {
+        for (int j = 0; j < c; j++) {
+            m[i][j] = randomNumber();
+        }
+    }
+}
 
-	int n, m, k;
-	cin >> n >> m >> k;
+void multiply(int row, int col, int m) {
+    int sum = 0;
+    for (int i = 0; i < m; i++) {
+        sum += matrixA[row][i] * matrixB[i][col];
+    }
+    printf("C[%d][%d] = %d\n", row, col, sum);
+    matrixC[row][col] = sum;
+}
 
-	vector<vector<int>> a(n, vector<int>(m, 0));
-	vector<vector<int>> b(m, vector<int>(k, 0));
-	vector<vector<int>> c(n, vector<int>(k, 0));
+void printMatrix(const vector<vector<int>> &m) {
+    for (const auto &i : m) {
+        for (int j : i) {
+            cout << j << " ";
+        }
+        cout << endl;
+    }
+}
 
-	for_each(a.begin(), a.end(), [=](auto& r) { generate(r.begin(), r.end(), [=]() { return rand() % MOD; }); });
-	for_each(b.begin(), b.end(), [=](auto& r) { generate(r.begin(), r.end(), [=]() { return rand() % MOD; }); });
+int main() {
+    int n, m, k, g = 0;
+    cout << "Input n m k for A[n x k], B[m x k]:" << endl;
+    cin >> n >> m >> k;
+    cout << "Do you want to input or generate the matrix? (1 - input, 2 - generate)" << endl;
+    while (g != 1 && g != 2) {
+        cin >> g;
+    }
 
-	cout << "A:" << endl;
-	print(a);
-	cout << "B:" << endl;
-	print(b);
+    matrixA = createMatrix(n, m);
+    matrixB = createMatrix(m, k);
+    matrixC = createMatrix(n, k);
 
-	chrono::steady_clock::time_point begin = chrono::steady_clock::now();
+    if (g == 1) {
+        cout << "Input matrix A: " << endl;
+        inputMatrix(matrixA, n, m);
+        cout << "Input matrix B: " << endl;
+        inputMatrix(matrixB, m, k);
+    } else if (g == 2) {
+        generateMatrix(matrixA, n, m);
+        cout << "Generated matrix A:" << endl;
+        printMatrix(matrixA);
+        generateMatrix(matrixB, m, k);
+        cout << "Generated matrix B:" << endl;
+        printMatrix(matrixB);
+    }
 
-	vector<thread> threads;
-	for (int i = 0; i < n; ++i)
-	{
-		for (int j = 0; j < k; ++j)
-		{
-			threads.emplace_back(multiply, i, j, cref(a), cref(b), ref(c));
-		}
-	}
+    auto start = steady_clock::now();
+    vector<thread> threads;
+    for (int row = 0; row < n; row++) {
+        for (int col = 0; col < k; col++) {
+            threads.emplace_back(multiply, row, col, m);
+        }
+    }
 
-	for (auto& thread : threads)
-	{
-		thread.join();
-	}
+    for (auto &th: threads) {
+        th.join();
+    }
 
-	chrono::steady_clock::time_point end = chrono::steady_clock::now();
+    auto timePassed = duration_cast<milliseconds>(steady_clock::now() - start).count();
 
-	cout << "Elapsed time: " << chrono::duration_cast<chrono::milliseconds>(end - begin).count() << "ms" << endl;
-
-	lock_guard<mutex> lock(cout_lock);
-	cout << "C = A x B:" << endl;
-	print(c);
-
-	system("pause");
-
-	return EXIT_SUCCESS;
+    cout << "Result: " << endl;
+    printMatrix(matrixC);
+    cout << "Time: " << timePassed << "ms" << endl;
+    return 0;
 }
